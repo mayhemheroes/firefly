@@ -13,6 +13,9 @@ libfuzzer-sys = "0.4"
 [dependencies.firefly_session]
 path = ".."
 
+[dependencies.firefly_diagnostics]
+path = "../../diagnostics"
+
 # Prevent this from interfering with workspaces
 [workspace]
 members = ["."]
