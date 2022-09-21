@@ -1,5 +1,6 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
+use std::sync::Arc;
 use firefly_diagnostics::{
     CodeMap, Reporter,
 };
