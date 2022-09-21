@@ -1,6 +1,11 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
+use firefly_diagnostics::{
+    CodeMap, Reporter,
+};
 
 fuzz_target!(|data: &str| {
-    _ = firefly_session::App::parse_str(data);
+    let reporter = Reporter::new();
+    let codemap = Arc::new(CodeMap::new());
+    _ = firefly_session::App::parse_str(&reporter, codemap.clone(), data);
 });
