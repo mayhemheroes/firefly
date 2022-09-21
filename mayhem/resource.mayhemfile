@@ -1,0 +1,7 @@
+project: firefly
+target: resource
+
+cmds:
+  - cmd: /resource
+  - cmd: /resource_no_inst @@
+    libfuzzer: false
