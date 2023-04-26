@@ -72,21 +72,21 @@ CARGO_MAKE_RUST_SCRIPT_PROVIDER = "rust-script"
 CARGO_MAKE_USE_WORKSPACE_PROFILE = true
 CARGO_MAKE_CARGO_BUILD_TEST_FLAGS = "--no-fail-fast"
 CARGO_TARGET_DIR = { value = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target", condition = { env_not_set = ["CARGO_TARGET_DIR"] } }
-CARGO_MAKE_TOOLCHAIN_DEFAULT = { source = "${CARGO_MAKE_CI}", default_value = "nightly", mapping = { "true" = "nightly-2022-08-08", "false" = "nightly" } }
+CARGO_MAKE_TOOLCHAIN_DEFAULT = { source = "${CARGO_MAKE_CI}", default_value = "nightly", mapping = { "true" = "nightly-2022-11-02", "false" = "nightly" } }
 CARGO_MAKE_TOOLCHAIN = { value = "${CARGO_MAKE_TOOLCHAIN_DEFAULT}", condition = { env_not_set = ["CARGO_MAKE_TOOLCHAIN"] } }
 BACKTRACE_DEFAULT = { source = "${CARGO_MAKE_CI}", mapping = { "true" = "1", "false" = "0" } }
 RUST_BACKTRACE = { value = "${BACKTRACE_DEFAULT}", condition = { env_not_set = ["RUST_BACKTRACE"] } }
 GECKODRIVER_VERSION = "0.27.0"
 CHROMEDRIVER_VERSION = "85.0.4183.87"
 FIREFLY_BUILD_PROFILE = { source = "${CARGO_MAKE_PROFILE}", default_value = "dev", mapping = { "development" = "dev", "production" = "release" } }
-FIREFLY_BUILD_TYPE = { value = "dynamic", condition = { env_not_set = ["FIREFLY_BUILD_TYPE"] } }
+FIREFLY_BUILD_TYPE = { value = "static", condition = { env_not_set = ["FIREFLY_BUILD_TYPE"] } }
 FIREFLY_BUILD_LTO = { source = "${FIREFLY_BUILD_PROFILE}", default_value = "false", mapping = { "dev" = "false", "release" = "true" } }
 FIREFLY_LLVM_LTO = { source = "${FIREFLY_BUILD_LTO}", default_value = "OFF", mapping = { "false" = "OFF", "true" = "ON" } }
 FIREFLY_BIN_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/bin"
 FIREFLY_INSTALL_DIR = "${FIREFLY_BIN_DIR}/${CARGO_MAKE_RUST_TARGET_TRIPLE}"
-LLVM_BUILD_STATIC = { source = "${FIREFLY_BUILD_TYPE}", default_value = "OFF", mapping = { "dynamic" = "OFF", "static" = "ON" } }
+LLVM_BUILD_STATIC = { source = "${FIREFLY_BUILD_TYPE}", default_value = "ON", mapping = { "dynamic" = "OFF", "static" = "ON" } }
 LLVM_USE_LIBCXX = { source = "${CARGO_MAKE_RUST_TARGET_VENDOR}", default_value = "OFF", mapping = { "apple" = "ON" } }
-LLVM_LINK_LLVM_DYLIB = { source = "${FIREFLY_BUILD_TYPE}", default_value = "ON", mapping = { "dynamic" = "ON", "static" = "OFF" } }
+LLVM_LINK_LLVM_DYLIB = { source = "${FIREFLY_BUILD_TYPE}", default_value = "OFF", mapping = { "dynamic" = "ON", "static" = "OFF" } }
 LLVM_USE_SANITIZER = { source = "${SANITIZER}", default_value = "", mapping = { "address" = "Address", "memory" = "Memory" }, condition = { env_set = ["SANITIZER"] } }
 
 [tasks.init]
@@ -339,7 +339,7 @@ dependencies = [
 category = "Build"
 description = "Builds the Firefly compiler"
 condition = { env = { "BUILD_FIREFLY" = "true" } }
-env = { RUSTFLAGS = "-Z unstable-options -C link-args=-Wl,-rpath,${LLVM_PREFIX}/lib" }
+env = { RUSTFLAGS = "-Z unstable-options -C link-args=-Wl,-rpath,${LLVM_PREFIX}/lib", CARGO_TARGET_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target" }
 command = "bin/firefly-make"
 args = ["build", "@@remove-empty(CARGO_MAKE_CARGO_VERBOSE_FLAGS)"]
 dependencies = [
@@ -361,7 +361,7 @@ category = "Tools"
 description = "Builds the firefly-lld wrapper"
 command = "rustup"
 env = { CARGO_TARGET_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/tools/firefly-make/target" }
-args = ["run", "${CARGO_MAKE_TOOLCHAIN}", "cargo", "-Z", "unstable-options", "build", "--manifest-path", "tools/firefly-lld/Cargo.toml", "--release", "--out-dir", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/tools/firefly-make/target"]
+args = ["run", "${CARGO_MAKE_TOOLCHAIN}", "cargo", "-Z", "unstable-options", "build", "--manifest-path", "tools/firefly-lld/Cargo.toml", "--release", "--out-dir", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target"]
 
 [tasks.release]
 category = "Release"

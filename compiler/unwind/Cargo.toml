@@ -1,21 +1,45 @@
 [package]
-authors = ["Paul Schoenfelder <paulschoenfelder@fastmail.com>"]
 name = "unwind"
-version = "0.1.0"
+description = "Provides unwinding capabilities for Firefly panics"
+version.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+categories.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme.workspace = true
+edition.workspace = true
+publish.workspace = true
+
 build = "build.rs"
-edition = "2021"
 
 [lib]
 test = false
 bench = false
 doc = false
 
+[features]
+# Only applies for Linux and Fuchsia targets
+# Static link to the in-tree build of LLVM libunwind
+llvm-libunwind = []
+# Only applies for Linux and Fuchsia targets
+# If crt-static is enabled, static link to `libunwind.a` provided by system
+# If crt-static is disabled, dynamic link to `libunwind.a` provided by system
+system-llvm-libunwind = []
+
 [dependencies]
-libc = "0.2"
-cfg-if = "1.0"
+cfg-if.workspace = true
+
+# We use libc for all platforms except wasm32-unknown-unknown
+# NOTE: On win32 we use libc for malloc/free
+[target.'cfg(any(not(target_arch = "wasm32")))'.dependencies.libc]
+workspace = true
+features = ["std", "align"]
+
+[target.'cfg(all(target_arch = "wasm32", any(target_env = "wasi", target_os = "emscripten")))'.dependencies.libc]
+workspace = true
+features = ["align"]
 
 [build-dependencies]
-cc = "1.0"
-
-[features]
-llvm-libunwind = []
+cc.workspace = true

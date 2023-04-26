@@ -6,10 +6,11 @@ on:
     - '*.md'
 
 env:
-  TOOLCHAIN: nightly-2022-08-08
-  LLVM_RELEASE: firefly-15.0.0-dev_2022-08-27
-  LLVM_LINK_LLVM_DYLIB: ON
   FIREFLY_BUILD_TYPE: static
+  LLVM_LINK_LLVM_DYLIB: OFF
+  LLVM_VERSION: "15"
+  LLVM_PREFIX: /usr/lib/llvm-15
+  CARGO_MAKE_TOOLCHAIN: nightly-2023-02-07
 
 jobs:
   compiler:
@@ -20,11 +21,6 @@ jobs:
       - name: Setup Env
         run: |
           echo "$(whoami)"
-          if [ -z "${XDG_DATA_HOME}" ]; then
-            sudo mkdir -p $HOME/.local/share/llvm
-            sudo chown -R runner $HOME/.local/share/llvm
-            echo "XDG_DATA_HOME=$HOME/.local/share" >> $GITHUB_ENV
-          fi
           echo "$PWD/bin" >> $GITHUB_PATH
       - name: Install Ninja
         run: |
@@ -33,27 +29,33 @@ jobs:
           rm ninja-linux.zip
       - name: Install LLVM
         run: |
-          mkdir -p "$XDG_DATA_HOME/llvm/firefly"
-          cd "$XDG_DATA_HOME/llvm/firefly"
-          wget "https://github.com/getfirefly/llvm-project/releases/download/${LLVM_RELEASE}/clang+llvm-15.0.0-x86_64-linux-gnu.tar.gz"
-          tar -xz --strip-components 1 -f clang+llvm-15.0.0-x86_64-linux-gnu.tar.gz
-          rm clang+llvm-15.0.0-x86_64-linux-gnu.tar.gz
-          cd -
-      - name: Install Toolchain
-        run: |
-          rustup toolchain install ${TOOLCHAIN}
-          rustup default ${TOOLCHAIN}
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "${LLVM_VERSION}"
+          sudo apt-get install -y "llvm-${LLVM_VERSION}" "libllvm${LLVM_VERSION}" "llvm-${LLVM_VERSION}-dev" "libmlir-${LLVM_VERSION}-dev" "libunwind-${LLVM_VERSION}-dev" "llvm-${LLVM_VERSION}-runtime"
+          if ! "${LLVM_PREFIX}/bin/llvm-config" --prefix; then
+            echo "$("${LLVM_PREFIX}/bin/llvm-config" --prefix)"
+            exit 1
+          fi
+          echo "$("${LLVM_PREFIX}/bin/llvm-config" --cxxflags)"
+          echo "$("${LLVM_PREFIX}/bin/llvm-config" --ldflags)"
+          echo "$("${LLVM_PREFIX}/bin/llvm-config" --host-target)"
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.CARGO_MAKE_TOOLCHAIN }}
+          override: true
       - name: Cache Cargo
         uses: actions/cache@v2
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ github.workflow }}-${{ github.job }}-toolchain-${{ env.TOOLCHAIN }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ github.workflow }}-${{ github.job }}-toolchain-${{ env.CARGO_MAKE_TOOLCHAIN }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Install cargo-make
         uses: actions-rs/cargo@v1
         with:
-          toolchain: ${{ env.TOOLCHAIN }}
+          toolchain: ${{ env.CARGO_MAKE_TOOLCHAIN }}
           command: install
           args: cargo-make
       - name: Build Compiler
@@ -62,12 +64,15 @@ jobs:
           CC: clang
           CXX: clang++
         with:
-          toolchain: ${{ env.TOOLCHAIN }}
           command: make
           args: firefly
-      - name: Run lit tests
+      - name: Run compiler unit tests
         uses: actions-rs/cargo@v1
         with:
-          toolchain: ${{ env.TOOLCHAIN }}
+          command: test
+          args: "-p firefly_intern -p firefly_parser -p firefly_target -p firefly_syntax_erl -p firefly_syntax_pp"
+      - name: Run literate tests
+        uses: actions-rs/cargo@v1
+        with:
           command: make
           args: test-lit

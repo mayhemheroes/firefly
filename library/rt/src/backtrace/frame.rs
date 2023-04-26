@@ -1,17 +1,16 @@
 use alloc::boxed::Box;
+use alloc::string::ToString;
 use core::cell::UnsafeCell;
 
-use lazy_static::lazy_static;
-
-use crate::function::ModuleFunctionArity;
+#[cfg(feature = "std")]
+use firefly_system::sync::OnceLock;
 
 use super::{Symbol, Symbolication};
+use crate::term::OpaqueTerm;
 
 #[cfg(feature = "std")]
-lazy_static! {
-    /// The symbol table used by the runtime system
-    static ref CWD: Option<std::path::PathBuf> = std::env::current_dir().ok();
-}
+/// The current working directory in which the executable is running
+static CWD: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
 
 /// This trait allows us to abstract over the concrete implementation
 /// of stack frames, which in the general case, requires libstd, which
@@ -21,14 +20,18 @@ pub trait Frame {
     /// This function should resolve a frame to its symbolicated form,
     /// i.e. mfa+file+line
     fn resolve(&self) -> Option<Symbolication>;
+    /// Returns the argument list term, if present in the frame metadata
+    fn args(&self) -> Option<OpaqueTerm>;
 }
 
 #[cfg(feature = "std")]
 impl Frame for backtrace::Frame {
     fn resolve(&self) -> Option<Symbolication> {
+        use crate::function::ModuleFunctionArity;
+
         let mut result = None;
 
-        let current_dir = CWD.as_deref();
+        let current_dir = CWD.get_or_init(|| std::env::current_dir().ok());
 
         backtrace::resolve_frame(self, |resolved_symbol| {
             let name = resolved_symbol.name();
@@ -60,6 +63,72 @@ impl Frame for backtrace::Frame {
 
         result
     }
+
+    #[inline(always)]
+    fn args(&self) -> Option<OpaqueTerm> {
+        None
+    }
+}
+impl Frame for firefly_bytecode::Symbol<crate::term::Atom> {
+    fn resolve(&self) -> Option<Symbolication> {
+        match self {
+            Self::Erlang { mfa, loc } => {
+                let symbol = Symbol::Erlang(mfa.clone().into());
+                match loc {
+                    None => Some(Symbolication::new(symbol, None, None, None)),
+                    Some(loc) => {
+                        let file = Some(loc.file.as_ref().to_string());
+                        Some(Symbolication::new(
+                            symbol,
+                            file,
+                            Some(loc.line),
+                            Some(loc.column),
+                        ))
+                    }
+                }
+            }
+            Self::Bif(mfa) => Some(Symbolication::new(
+                Symbol::Erlang(mfa.clone().into()),
+                None,
+                None,
+                None,
+            )),
+            Self::Native(name) => Some(Symbolication::new(
+                Symbol::Native(name.as_str().to_string()),
+                None,
+                None,
+                None,
+            )),
+        }
+    }
+
+    #[inline(always)]
+    fn args(&self) -> Option<OpaqueTerm> {
+        None
+    }
+}
+
+/// This type is used to embellish a frame that has extra info, with that info
+pub struct FrameWithExtraInfo<T: Frame> {
+    pub frame: T,
+    pub args: OpaqueTerm,
+}
+impl<F: Frame> FrameWithExtraInfo<F> {
+    #[inline]
+    pub fn new(frame: F, args: OpaqueTerm) -> Box<Self> {
+        Box::new(Self { frame, args })
+    }
+}
+impl<F: Frame> Frame for FrameWithExtraInfo<F> {
+    #[inline]
+    fn resolve(&self) -> Option<Symbolication> {
+        self.frame.resolve()
+    }
+
+    #[inline]
+    fn args(&self) -> Option<OpaqueTerm> {
+        Some(self.args)
+    }
 }
 
 /// This struct wraps the underlying concrete representation of a stack frame
@@ -72,7 +141,7 @@ impl Frame for backtrace::Frame {
 /// unnecessary overhead accessing it. Should the guarantees change around concurrent access,
 /// this will need to be changed to some other Sync type like `RefCell`.
 pub struct TraceFrame {
-    frame: Box<dyn Frame>,
+    pub(crate) frame: Box<dyn Frame>,
     symbol: UnsafeCell<Option<Symbolication>>,
 }
 impl TraceFrame {

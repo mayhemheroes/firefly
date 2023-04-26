@@ -6,9 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const ENV_LLVM_PREFIX: &'static str = "LLVM_PREFIX";
-const ENV_LLVM_BUILD_STATIC: &'static str = "LLVM_BUILD_STATIC";
+const ENV_FIREFLY_BUILD_TYPE: &'static str = "FIREFLY_BUILD_TYPE";
 const ENV_LLVM_LINK_LLVM_DYLIB: &'static str = "LLVM_LINK_LLVM_DYLIB";
-const ENV_FIREFLY_LLVM_LTO: &'static str = "FIREFLY_LLVM_LTO";
 const ENV_LLVM_USE_SANITIZER: &'static str = "LLVM_USE_SANITIZER";
 
 fn main() {
@@ -17,9 +16,8 @@ fn main() {
     let llvm_lib_dir = llvm_prefix.join("lib");
 
     println!("cargo:rerun-if-env-changed={}", ENV_LLVM_PREFIX);
-    println!("cargo:rerun-if-env-changed={}", ENV_LLVM_BUILD_STATIC);
+    println!("cargo:rerun-if-env-changed={}", ENV_FIREFLY_BUILD_TYPE);
     println!("cargo:rerun-if-env-changed={}", ENV_LLVM_LINK_LLVM_DYLIB);
-    println!("cargo:rerun-if-env-changed={}", ENV_FIREFLY_LLVM_LTO);
     println!("cargo:rerun-if-env-changed={}", ENV_LLVM_USE_SANITIZER);
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=c_src");
@@ -94,6 +92,11 @@ fn main() {
             continue;
         }
 
+        // Ignore -std=c++14 if present
+        if flag.starts_with("-std=c++") {
+            continue;
+        }
+
         shared_cxxflags.push(flag);
         cfg.flag(flag);
     }
@@ -106,7 +109,7 @@ fn main() {
         cfg.define(&flag, None);
     }
 
-    if env::var(ENV_FIREFLY_LLVM_LTO).unwrap_or("OFF".to_string()) == "ON" {
+    if env::var("FIREFLY_LLVM_LTO").unwrap_or("OFF".to_string()) == "ON" {
         println!("cargo:lto=true");
         cfg.flag("-flto=thin");
     } else {
@@ -131,27 +134,26 @@ fn main() {
     if cfg!(windows) {
         cfg.file("c_src/raw_win32_handle_ostream.cpp");
     }
-    cfg.file("c_src/Archives.cpp")
-       .file("c_src/Attributes.cpp")
-       .file("c_src/Diagnostics.cpp")
-       .file("c_src/ErrorHandling.cpp")
-       .file("c_src/IR.cpp")
-       //.file("c_src/Orc.cpp")
-       .file("c_src/Passes.cpp")
-       .file("c_src/Target.cpp")
-       .file("c_src/Version.cpp")
+    cfg.file("c_src/lib/CAPI/Archives.cpp")
+       .file("c_src/lib/CAPI/Diagnostics.cpp")
+       .file("c_src/lib/CAPI/ErrorHandling.cpp")
+       .file("c_src/lib/CAPI/IR.cpp")
+       .file("c_src/lib/CAPI/ModuleWriter.cpp")
+       .file("c_src/lib/CAPI/Passes.cpp")
+       .file("c_src/lib/CAPI/Target.cpp")
        .include(include_dir)
        .shared_flag(false)
        .static_flag(true)
        .cpp(true)
        .cpp_link_stdlib(None) // we handle this below
+       .flag("-std=c++17") // Force minimum required C++ version
        .compile("firefly_llvm_core");
 
     let (llvm_kind, llvm_link_arg) = detect_llvm_link();
     let link_static = llvm_kind == "static";
     let link_llvm_dylib = llvm_link_llvm_dylib == "ON";
     println!("cargo:link_static={}", &link_static);
-    println!("cargo:link_llvm_dylib={}", &link_llvm_dylib);
+    println!("cargo:link_llvm_dylib={}", &llvm_link_llvm_dylib);
     println!(
         "cargo:rustc-link-arg=-Wl,-rpath={}",
         llvm_lib_dir.as_path().display()
@@ -187,12 +189,12 @@ fn main() {
                 continue;
             };
 
-            // Don't need or want this library, but LLVM's CMake build system
+            // Don't need or want these libraries, but LLVM's CMake build system
             // doesn't provide a way to disable it, so filter it here even though we
-            // may or may not have built it. We don't reference anything from this
-            // library and it otherwise may just pull in extra dependencies on
+            // may or may not have built it. We don't reference anything from these
+            // libraries and it otherwise may just pull in extra dependencies on
             // libedit which we don't want
-            if name == "LLVMLineEditor" {
+            if name == "LLVMLineEditor" || name == "Polly" || name == "PollyISL" {
                 continue;
             }
 
@@ -360,9 +362,9 @@ fn output(cmd: &mut Command) -> String {
 
 fn detect_llvm_link() -> (&'static str, &'static str) {
     // Force the link mode we want, preferring static by default, but
-    match env::var_os(ENV_LLVM_BUILD_STATIC) {
-        Some(val) if val == "ON" => ("static", "--link-static"),
-        _ => ("dylib", "--link-shared"),
+    match env::var_os(ENV_FIREFLY_BUILD_TYPE) {
+        Some(val) if val == "dynamic" => ("dylib", "--link-shared"),
+        _ => ("static", "--link-static"),
     }
 }
 

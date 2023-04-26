@@ -1,7 +1,9 @@
 use alloc::borrow::Cow;
 use alloc::string::String;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt;
+use core::ops::Deref;
 
 use half::f16;
 use paste::paste;
@@ -56,6 +58,61 @@ pub trait Bitstring: fmt::Debug {
     fn select_bytes(&self, n: usize) -> Result<Selection<'_>, Selection<'_>> {
         let data = unsafe { self.as_bytes_unchecked() };
         Selection::new(data, 0, self.bit_offset(), None, n * 8)
+    }
+
+    /// Selects `n` bytes from this bitstring, starting at byte `offset`.
+    ///
+    /// Returns a `Result<Selection, Selection>` where `Err` implies that there
+    /// was insufficient bytes in the underlying data, with a selection covering
+    /// what was available.
+    #[inline]
+    fn select_bytes_at(&self, offset: usize, n: usize) -> Result<Selection<'_>, Selection<'_>> {
+        let data = unsafe { self.as_bytes_unchecked() };
+        Selection::new(data, offset, self.bit_offset(), None, n * 8)
+    }
+
+    /// Selects `n` bytes from this bitstring, starting at byte `offset`.
+    ///
+    /// Negative lengths are supported, and imply a selection seeking backwards from `offset`,
+    /// rather than forwards.
+    ///
+    /// Returns a `Result<Selection, Selection>` where `Err` implies that there
+    /// was insufficient bytes in the underlying data, with a selection covering
+    /// what was available.
+    #[inline]
+    fn select_binary_part(&self, offset: usize, n: isize) -> Result<Selection<'_>, Selection<'_>> {
+        let data = unsafe { self.as_bytes_unchecked() };
+        if n >= 0 {
+            let n = n.unsigned_abs();
+            Selection::new(data, offset, self.bit_offset(), None, n * 8)
+        } else {
+            let n = n.unsigned_abs();
+            let offset = offset.saturating_sub(n);
+            Selection::new(data, offset, self.bit_offset(), None, n * 8)
+        }
+    }
+
+    /// Returns a tuple of two selections which represent splitting the underlying data in two
+    /// at `offset` bytes from the start of the data.
+    ///
+    /// If the underlying bitstring is empty, both selections will be empty. If `offset` is on
+    /// a boundary, such as `0` (the beginning of the data), then the part of the selection on
+    /// the boundary will be empty.
+    ///
+    /// Returns `None` if offset is out of bounds.
+    fn select_split(&self, offset: usize) -> Option<(Selection<'_>, Selection<'_>)> {
+        let byte_size = self.byte_size();
+        match (offset, byte_size) {
+            (0, 0) => Some((Selection::Empty, Selection::Empty)),
+            (0, _) => Some((Selection::Empty, self.select_all())),
+            (n, m) if n == m => Some((self.select_all(), Selection::Empty)),
+            (n, _) => {
+                let selection = self.select_all();
+                let first = selection.take(n * 8).ok()?;
+                let second = selection.shrink_front(n * 8);
+                Some((first, second))
+            }
+        }
     }
 
     /// Obtains a `Selection` containing `n` bits from this bitstring.
@@ -132,7 +189,8 @@ pub trait Bitstring: fmt::Debug {
 
     /// Attempts to access the underlying data as a `str`
     ///
-    /// Returns `None` if the bitstring is not aligned and binary, and if the data is not valid UTF-8
+    /// Returns `None` if the bitstring is not aligned and binary, and if the data is not valid
+    /// UTF-8
     ///
     /// If the encoding is known to be UTF-8, this operation can be very efficient,
     /// otherwise, the data must be examined for validity first, which is linear
@@ -213,6 +271,51 @@ where
     #[inline]
     unsafe fn as_bytes_unchecked(&self) -> &[u8] {
         (**self).as_bytes_unchecked()
+    }
+}
+
+impl<B> Bitstring for Arc<B>
+where
+    B: Bitstring + ?Sized,
+{
+    #[inline]
+    fn byte_size(&self) -> usize {
+        self.deref().byte_size()
+    }
+
+    #[inline]
+    fn bit_size(&self) -> usize {
+        self.deref().bit_size()
+    }
+
+    #[inline]
+    fn trailing_bits(&self) -> u8 {
+        self.deref().trailing_bits()
+    }
+
+    #[inline]
+    fn bytes(&self) -> ByteIter<'_> {
+        self.deref().bytes()
+    }
+
+    #[inline]
+    fn is_aligned(&self) -> bool {
+        self.deref().is_aligned()
+    }
+
+    #[inline]
+    fn is_binary(&self) -> bool {
+        self.deref().is_binary()
+    }
+
+    #[inline]
+    fn as_str(&self) -> Option<&str> {
+        self.deref().as_str()
+    }
+
+    #[inline]
+    unsafe fn as_bytes_unchecked(&self) -> &[u8] {
+        self.deref().as_bytes_unchecked()
     }
 }
 
@@ -376,7 +479,8 @@ impl Bitstring for String {
     }
 }
 
-/// This trait provides common behavior for all types which are always composed of aligned and binary data.
+/// This trait provides common behavior for all types which are always composed of aligned and
+/// binary data.
 pub trait Binary: Bitstring {
     /// Returns the set of flags that apply to this binary
     fn flags(&self) -> BinaryFlags;
@@ -461,6 +565,36 @@ where
     #[inline]
     fn encoding(&self) -> Encoding {
         (**self).encoding()
+    }
+}
+
+impl<B> Binary for Arc<B>
+where
+    B: Binary + ?Sized,
+{
+    #[inline]
+    fn flags(&self) -> BinaryFlags {
+        self.deref().flags()
+    }
+
+    #[inline]
+    fn is_raw(&self) -> bool {
+        self.deref().is_raw()
+    }
+
+    #[inline]
+    fn is_latin1(&self) -> bool {
+        self.deref().is_latin1()
+    }
+
+    #[inline]
+    fn is_utf8(&self) -> bool {
+        self.deref().is_utf8()
+    }
+
+    #[inline]
+    fn encoding(&self) -> Encoding {
+        self.deref().encoding()
     }
 }
 
@@ -561,6 +695,7 @@ impl Binary for String {
 pub trait Aligned {}
 
 impl<A: Aligned + ?Sized> Aligned for &A {}
+impl<A: Aligned + ?Sized> Aligned for Arc<A> {}
 
 impl<const N: usize> Aligned for [u8; N] {}
 impl Aligned for [u8] {}
@@ -568,11 +703,12 @@ impl Aligned for str {}
 impl Aligned for String {}
 impl Aligned for Vec<u8> {}
 
-/// A trait that represents the ability to obtain the byte representation of a endianness-sensitive value,
-/// namely numerics.
+/// A trait that represents the ability to obtain the byte representation of a endianness-sensitive
+/// value, namely numerics.
 ///
-/// This trait can only be implemented on Copy types, and is expected to return an array of bytes of the exact
-/// size as the type being converted. This matches how the methods on the standard library numeric types work.
+/// This trait can only be implemented on Copy types, and is expected to return an array of bytes of
+/// the exact size as the type being converted. This matches how the methods on the standard library
+/// numeric types work.
 pub trait ToEndianBytes<const N: usize>: Copy {
     /// Converts this value to bytes in big-endian order
     ///

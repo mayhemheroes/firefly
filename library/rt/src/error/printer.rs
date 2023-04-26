@@ -3,11 +3,11 @@ use std::io::{self, Write};
 use termcolor::{BufferWriter, Color, ColorChoice, ColorSpec, WriteColor};
 
 use crate::backtrace::Symbol;
-use crate::error::ErlangException;
-use crate::process::Process;
+use crate::error::ExceptionClass;
+use crate::process::ProcessLock;
 use crate::term::*;
 
-pub fn print(process: &Process, exception: &ErlangException) -> io::Result<()> {
+pub fn print(process: &mut ProcessLock) -> io::Result<()> {
     let stderr = BufferWriter::stderr(ColorChoice::Auto);
     let mut writer = stderr.buffer();
 
@@ -21,68 +21,109 @@ pub fn print(process: &Process, exception: &ErlangException) -> io::Result<()> {
     let mut green = ColorSpec::new();
     green.set_fg(Some(Color::Green));
 
-    writer.set_color(&bold)?;
-    writeln!(writer, "Backtrace (most recent call last):")?;
+    if let Some(trace) = process.exception_info.trace.as_deref() {
+        writer.set_color(&bold)?;
+        writeln!(writer, "Backtrace (most recent call last):")?;
 
-    let trace = exception.trace();
+        for frame in trace.frames().iter().rev() {
+            let Some(symbol) = frame.symbolicate() else { continue; };
+            let line = symbol.line();
+            let column = symbol.line();
+            let filename = symbol.filename();
+            let Some(symbol) = symbol.symbol() else { continue; };
 
-    for symbol in trace.iter_symbols().rev() {
-        let mfa = match symbol.symbol() {
-            Some(Symbol::Erlang(mfa)) => alloc::format!("{}", mfa),
-            Some(Symbol::Native(name)) => name.clone(),
-            None => continue,
-        };
-        let filename = symbol.filename();
+            writer.reset()?;
+            write!(writer, "  File ")?;
 
-        writer.reset()?;
-        write!(writer, "  File ")?;
-
-        match filename {
-            Some(f) => {
-                writer.set_color(&underlined)?;
-                write_filename(&mut writer, f)?;
-                writer.reset()?;
-                if let Some(line) = symbol.line() {
-                    write!(writer, ":")?;
-                    writer.set_color(&yellow)?;
-                    write!(writer, "{}", line)?;
+            match filename {
+                Some(f) => {
+                    writer.set_color(&underlined)?;
+                    write_filename(&mut writer, f)?;
+                    writer.reset()?;
+                    if let Some(line) = line {
+                        write!(writer, ":")?;
+                        writer.set_color(&yellow)?;
+                        write!(writer, "{}", line)?;
+                    }
+                    if let Some(col) = column {
+                        write!(writer, ":")?;
+                        writer.set_color(&yellow)?;
+                        write!(writer, "{}", col)?;
+                    }
                 }
-                if let Some(col) = symbol.column() {
-                    write!(writer, ":")?;
-                    writer.set_color(&yellow)?;
-                    write!(writer, "{}", col)?;
+                None => {
+                    writer.set_color(&underlined)?;
+                    write!(writer, "<unknown>")?;
                 }
             }
-            None => {
-                writer.set_color(&underlined)?;
-                write!(writer, "<unknown>")?;
+
+            writer.reset()?;
+            write!(writer, ", in ")?;
+            writer.set_color(&green)?;
+
+            if let Some(args) = frame.frame.args() {
+                // We have an argument list available, print it
+                match symbol {
+                    Symbol::Erlang(mfa) => match args.into() {
+                        Term::Nil => {
+                            writeln!(writer, "{}:{}()", &mfa.module, &mfa.function)?;
+                        }
+                        Term::Cons(argv) => {
+                            write!(writer, "{}:{}(", &mfa.module, &mfa.function)?;
+                            for (i, arg) in argv.iter().enumerate() {
+                                let arg = arg.unwrap();
+                                if i > 0 {
+                                    write!(writer, ", {}", &arg)?;
+                                } else {
+                                    write!(writer, "{}", &arg)?;
+                                }
+                            }
+                            writeln!(writer, ")")?;
+                        }
+                        _ => unreachable!(),
+                    },
+                    Symbol::Native(name) => match args.into() {
+                        Term::Nil => {
+                            writeln!(writer, "{}()", &name)?;
+                        }
+                        Term::Cons(argv) => {
+                            write!(writer, "{}(", &name)?;
+                            for (i, arg) in argv.iter().enumerate() {
+                                let arg = arg.unwrap();
+                                if i > 0 {
+                                    write!(writer, ", {}", &arg)?;
+                                } else {
+                                    write!(writer, "{}", &arg)?;
+                                }
+                            }
+                            writeln!(writer, ")")?;
+                        }
+                        _ => unreachable!(),
+                    },
+                }
+            } else {
+                match symbol {
+                    Symbol::Erlang(mfa) => writeln!(writer, "{}", &mfa)?,
+                    Symbol::Native(name) => writeln!(writer, "{}", &name)?,
+                }
             }
         }
-
-        writer.reset()?;
-        write!(writer, ", in ")?;
-        writer.set_color(&green)?;
-        writeln!(writer, "{}", &mfa)?;
     }
 
     writer.set_color(&bold)?;
 
-    write!(writer, "\nProcess ({}) ", Pid::Local { id: process.pid() })?;
+    write!(writer, "\nProcess ({}) ", process.pid())?;
 
-    let kind = exception.kind();
-    let kind_suffix = if kind == atoms::Error {
-        "raised an error"
-    } else if kind == atoms::Exit {
-        "exited abnormally."
-    } else if kind == atoms::Throw {
-        "threw an exception."
-    } else {
-        "crashed."
+    let kind_suffix = match process.exception_info.class().unwrap() {
+        ExceptionClass::Error => "raised an error.",
+        ExceptionClass::Exit => "exited abnormally.",
+        ExceptionClass::Throw => "threw an exception.",
     };
 
+    let value: Term = process.exception_info.value.into();
     writeln!(writer, "{}", kind_suffix)?;
     writer.set_color(&yellow)?;
-    writeln!(writer, "  {}\n", exception.reason())?;
+    writeln!(writer, "  {}\n", &value)?;
 
     writer.reset()?;
 

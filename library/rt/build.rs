@@ -78,20 +78,17 @@ fn main() {
 fn generate_symbols_rs(symbols: Vec<Symbol>) -> std::io::Result<()> {
     let out = PathBuf::from(env::var("OUT_DIR").unwrap()).join("atoms.rs");
     let mut file = File::create(&out)?;
+    file.write_all(b"use core::ptr::NonNull;\n")?;
     file.write_all(b"use super::{Atom, AtomData};\n")?;
 
-    // Symbol data declarations
+    // All other symbol data declarations
     for symbol in symbols.iter() {
-        if symbol.key == "False" || symbol.key == "True" {
-            continue;
-        }
-
         write!(
             &mut file,
             r#"
 pub const {0}_VALUE: &'static [u8] = b"{1}";
 
-#[cfg_attr(target_os = "macos", link_section = "__DATA,atoms")]
+#[cfg_attr(target_os = "macos", link_section = "__DATA,__atoms")]
 #[cfg_attr(all(linux, not(target_os = "macos")), link_section = "__atoms")]
 #[export_name = "atom_{1}"]
 #[linkage = "linkonce_odr"]
@@ -108,26 +105,12 @@ pub static {0}_ATOM: AtomData = AtomData {{
     // Symbol shorthand declarations
     file.write_all(b"\n\n")?;
     for symbol in symbols.iter() {
-        if symbol.key == "False" {
-            writeln!(
-                &mut file,
-                r#"
-pub const False: Atom = Atom(core::ptr::null());"#,
-            )?;
-        } else if symbol.key == "True" {
-            writeln!(
-                &mut file,
-                r#"
-pub const True: Atom = Atom(1usize as *const AtomData);"#,
-            )?;
-        } else {
-            writeln!(
-                &mut file,
-                r#"
-pub static {0}: Atom = Atom(&{0}_ATOM as *const AtomData);"#,
-                &symbol.key,
-            )?;
-        }
+        writeln!(
+            &mut file,
+            r#"
+pub static {0}: Atom = Atom(unsafe {{ NonNull::new_unchecked(&{0}_ATOM as *const AtomData as *mut AtomData) }});"#,
+            &symbol.key,
+        )?;
     }
 
     file.sync_data()?;
