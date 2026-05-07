@@ -1,8 +1,5 @@
 #![deny(warnings)]
-#![feature(iterator_try_collect)]
-#![feature(map_try_insert)]
 #![feature(box_patterns)]
-#![feature(assert_matches)]
 
 mod bimap;
 mod ir;

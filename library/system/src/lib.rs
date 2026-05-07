@@ -8,7 +8,7 @@
 #![feature(slice_ptr_get)]
 #![feature(slice_ptr_len)]
 // Used for OnceLock impl
-#![feature(const_default_impls)]
+#![feature(const_default)]
 #![feature(const_trait_impl)]
 #![feature(dropck_eyepatch)]
 #![feature(never_type)]

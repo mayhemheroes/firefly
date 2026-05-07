@@ -1,6 +1,6 @@
 #![feature(proc_macro_diagnostic)]
 #![feature(proc_macro_def_site)]
-#![feature(box_syntax)]
+
 #![feature(box_patterns)]
 #![feature(iterator_try_collect)]
 extern crate proc_macro;

@@ -174,7 +174,7 @@ pub fn rename_or_copy_remove<P: AsRef<Path>, Q: AsRef<Path>>(
     }
 }
 
-#[cfg(all(unix, target_env = "wasi"))]
+#[cfg(all(unix, target_os = "wasi"))]
 pub fn path_to_c_string(p: &Path) -> CString {
     use std::ffi::OsStr;
     use std::os::wasi::ffi::OsStrExt;
@@ -182,7 +182,7 @@ pub fn path_to_c_string(p: &Path) -> CString {
     CString::new(p.as_bytes()).unwrap()
 }
 
-#[cfg(all(unix, not(target_env = "wasi")))]
+#[cfg(all(unix, not(target_os = "wasi")))]
 pub fn path_to_c_string(p: &Path) -> CString {
     use std::ffi::OsStr;
     use std::os::unix::ffi::OsStrExt;

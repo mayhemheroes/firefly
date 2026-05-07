@@ -1,5 +1,4 @@
 #![deny(warnings)]
-#![feature(auto_traits)]
 // Used to prevent panic!(FatalError)
 #![feature(negative_impls)]
 

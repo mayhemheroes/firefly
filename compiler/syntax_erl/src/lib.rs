@@ -1,9 +1,6 @@
 #![deny(warnings)]
 #![feature(trait_alias)]
-#![feature(map_try_insert)]
-#![feature(iterator_try_collect)]
 #![feature(box_patterns)]
-#![feature(once_cell)]
 
 #[macro_use]
 mod macros;

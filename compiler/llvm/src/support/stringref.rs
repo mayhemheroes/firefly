@@ -197,7 +197,7 @@ impl From<&CString> for StringRef {
     }
 }
 impl From<&OsStr> for StringRef {
-    #[cfg(all(unix, target_env = "wasi"))]
+    #[cfg(all(unix, target_os = "wasi"))]
     fn from(s: &OsStr) -> Self {
         use std::os::wasi::ffi::OsStrExt;
         let bytes = s.as_bytes();
@@ -207,7 +207,7 @@ impl From<&OsStr> for StringRef {
         }
     }
 
-    #[cfg(all(unix, not(target_env = "wasi")))]
+    #[cfg(all(unix, not(target_os = "wasi")))]
     fn from(s: &OsStr) -> Self {
         use std::os::unix::ffi::OsStrExt;
         let bytes = s.as_bytes();

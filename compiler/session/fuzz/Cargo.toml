@@ -16,6 +16,9 @@ path = ".."
 [dependencies.firefly_diagnostics]
 path = "../../diagnostics"
 
+
+[dependencies.firefly_util]
+path = "../../util"
 # Prevent this from interfering with workspaces
 [workspace]
 members = ["."]

@@ -11,7 +11,7 @@
 #![feature(is_terminal)]
 #![feature(option_result_contains)]
 #![feature(const_trait_impl)]
-#![feature(const_default_impls)]
+#![feature(const_default)]
 #![feature(slice_as_chunks)]
 #![feature(local_key_cell_methods)]
 #![feature(box_into_inner)]
