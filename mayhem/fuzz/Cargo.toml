@@ -1,0 +1,33 @@
+[package]
+name = "firefly-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.firefly_session]
+path = "../../compiler/session"
+
+[dependencies.firefly_diagnostics]
+path = "../../compiler/diagnostics"
+
+[dependencies.firefly_util]
+path = "../../compiler/util"
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "resource"
+path = "fuzz_targets/resource.rs"
+test = false
+doc = false

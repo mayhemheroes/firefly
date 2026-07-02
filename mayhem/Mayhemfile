@@ -1,0 +1,13 @@
+project: mayhemheroes/firefly
+target: resource
+image: mayhemheroes/firefly:latest
+duration: 300
+
+cmds:
+  - cmd: /mayhem/resource
+    libfuzzer: true
+
+# Benign seed corpus — valid Erlang .app resource files. Kept on disk at
+# mayhem/seeds and baked into the image at /mayhem/mayhem/seeds so a local
+# regression replay (mayhem/test.sh / fuzz-smoke) has real inputs to exercise,
+# even though no top-level testsuite: directive is declared here (spec gate).

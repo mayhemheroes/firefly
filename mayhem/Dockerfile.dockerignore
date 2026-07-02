@@ -1,0 +1,22 @@
+# mayhem/Dockerfile.dockerignore — BuildKit-preferred override for the commit-image build.
+# The upstream root .dockerignore excludes /.git, which would strip git history from the
+# image. BuildKit uses THIS file (mayhem/Dockerfile.dockerignore) in preference to the
+# root .dockerignore when building -f mayhem/Dockerfile.
+# We keep .git (§6.2 item 2: grader / PATCH tier need the full history).
+
+# Build outputs
+target/
+mayhem/fuzz/target/
+mayhem/test-target/
+build/
+out/
+*.o
+*.a
+*.so
+*.dylib
+**/__pycache__/
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*~
